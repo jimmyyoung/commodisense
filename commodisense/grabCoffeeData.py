@@ -1,8 +1,13 @@
 # SimpleHistoryExample.py
 
 import blpapi
+import pymongo
+import json
+import datetime
 from optparse import OptionParser
-
+from pymongo import MongoClient
+from datetime import date
+from datetime import datetime
 
 def parseCmdLine():
     parser = OptionParser(description="Retrieve reference data.")
@@ -26,6 +31,9 @@ def parseCmdLine():
 
 def main():
     options = parseCmdLine()
+    mongo_client = MongoClient()
+    mongo_db = mongo_client.test
+    mongo_commodity = mongo_db.commodityRaw
 
     # Fill SessionOptions
     sessionOptions = blpapi.SessionOptions()
@@ -52,17 +60,16 @@ def main():
 
         # Create and fill the request for the historical data
         request = refDataService.createRequest("HistoricalDataRequest")
-
-	#Arabian Coffee Beans baby!
+        #Arabian Coffee Beans baby!
         request.getElement("securities").appendValue("KCH4 Comdty") #March14
         request.getElement("securities").appendValue("KCK4 Comdty") #May14
         request.getElement("fields").appendValue("PX_LAST")
         request.getElement("fields").appendValue("OPEN")
         request.set("periodicityAdjustment", "ACTUAL")
-        request.set("periodicitySelection", "MONTHLY")
+        request.set("periodicitySelection", "DAILY")
         request.set("startDate", "20130101")
         request.set("endDate", "20141231")
-        request.set("maxDataPoints", 100)
+        request.set("maxDataPoints", 1000)
 
         print "Sending Request:", request
         # Send the request
@@ -71,11 +78,25 @@ def main():
         # Process received events
         while(True):
             # We provide timeout to give the chance for Ctrl+C handling:
-            ev = session.nextEvent(500)
+            ev = session.nextEvent(50000)
+
             for msg in ev:
 		print '-----'
-		print msg
-		#print msg.HistoricalDataResponse
+		if msg.hasElement('securityData'):
+			data_name = msg.getElement('securityData').getElement('security').getValue(0)
+			for dta in msg.getElement('securityData').getElement('fieldData').values():
+				data_date = dta.getElement('date').getValue(0)
+				
+				data_fdate = datetime.combine(data_date,datetime.min.time())
+				data_last = str(dta.getElement('PX_LAST').getValue(0))
+				mongo_data = {	
+						"name": data_name,
+						"date": data_fdate, 
+						"last_price": data_name
+				}
+						
+				mongo_commodity.insert(mongo_data)
+
 
             if ev.eventType() == blpapi.Event.RESPONSE:
                 # Response completly received, so we could exit
