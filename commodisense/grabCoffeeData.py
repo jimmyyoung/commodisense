@@ -1,7 +1,6 @@
-# SimpleIntradayTickExample.py
+# SimpleHistoryExample.py
 
 import blpapi
-import datetime
 from optparse import OptionParser
 
 
@@ -25,21 +24,7 @@ def parseCmdLine():
     return options
 
 
-def getPreviousTradingDate():
-    tradedOn = datetime.date.today()
-
-    while True:
-        try:
-            tradedOn -= datetime.timedelta(days=1)
-        except OverflowError:
-            return None
-
-        if tradedOn.weekday() not in [5, 6]:
-            return tradedOn
-
-
 def main():
-    global options
     options = parseCmdLine()
 
     # Fill SessionOptions
@@ -47,8 +32,7 @@ def main():
     sessionOptions.setServerHost(options.host)
     sessionOptions.setServerPort(options.port)
 
-    print "Connecting to %s:%d" % (options.host, options.port)
-
+    print "Connecting to %s:%s" % (options.host, options.port)
     # Create a Session
     session = blpapi.Session(sessionOptions)
 
@@ -57,47 +41,51 @@ def main():
         print "Failed to start session."
         return
 
-    if not session.openService("//blp/refdata"):
-        print "Failed to open //blp/refdata"
-        return
-
-    refDataService = session.getService("//blp/refdata")
-    request = refDataService.createRequest("IntradayTickRequest")
-    request.set("security", "VOD LN Equity")
-    request.getElement("eventTypes").appendValue("TRADE")
-    request.getElement("eventTypes").appendValue("AT_TRADE")
-    request.set("includeConditionCodes", True)
-
-    tradedOn = getPreviousTradingDate()
-    if not tradedOn:
-        print "unable to get previous trading date"
-        return
-
-    startTime = datetime.datetime.combine(tradedOn, datetime.time(13, 30))
-    request.set("startDateTime", startTime)
-
-    endTime = datetime.datetime.combine(tradedOn, datetime.time(13, 35))
-    request.set("endDateTime", endTime)
-
-    print "Sending Request:", request
-    session.sendRequest(request)
-
     try:
+        # Open service to get historical data from
+        if not session.openService("//blp/refdata"):
+            print "Failed to open //blp/refdata"
+            return
+
+        # Obtain previously opened service
+        refDataService = session.getService("//blp/refdata")
+
+        # Create and fill the request for the historical data
+        request = refDataService.createRequest("HistoricalDataRequest")
+
+	#Arabian Coffee Beans baby!
+        request.getElement("securities").appendValue("KCH4 Comdty") #March14
+        request.getElement("securities").appendValue("KCK4 Comdty") #May14
+        request.getElement("fields").appendValue("PX_LAST")
+        request.getElement("fields").appendValue("OPEN")
+        request.set("periodicityAdjustment", "ACTUAL")
+        request.set("periodicitySelection", "MONTHLY")
+        request.set("startDate", "20130101")
+        request.set("endDate", "20141231")
+        request.set("maxDataPoints", 100)
+
+        print "Sending Request:", request
+        # Send the request
+        session.sendRequest(request)
+
         # Process received events
         while(True):
-            # We provide timeout to give the chance to Ctrl+C handling:
+            # We provide timeout to give the chance for Ctrl+C handling:
             ev = session.nextEvent(500)
             for msg in ev:
-                print msg
-            # Response completly received, so we could exit
+		print '-----'
+		print msg
+		#print msg.HistoricalDataResponse
+
             if ev.eventType() == blpapi.Event.RESPONSE:
+                # Response completly received, so we could exit
                 break
     finally:
         # Stop the session
         session.stop()
 
 if __name__ == "__main__":
-    print "SimpleIntradayTickExample"
+    print "SimpleHistoryExample"
     try:
         main()
     except KeyboardInterrupt:
